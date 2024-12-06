@@ -67,7 +67,7 @@ router.get("/UserList", async (req, res) => {
                   {
                     $addFields: {
                       endPoints: { $subtract: ["$totalPlay", "$totalWon"] }, // End points calculation
-                      margin: { $multiply: ["$totalPlay", 2.5] },           // Margin calculation
+                      margin: { $multiply: ["$totalPlay", 0.025] },           // Margin calculation
                     },
                   },
                 ],
