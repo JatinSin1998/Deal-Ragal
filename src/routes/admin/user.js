@@ -38,78 +38,77 @@ router.get("/UserList", async (req, res) => {
 
     let userList = [];
     if (req.query.type == "Admin") {
-        const pipeline = [
-            // 1. Match users (Optional: Filter specific users)
-            {
-              $match: {}, // Add filter criteria here if needed, e.g., { isActive: true }
-            },
-            // 2. Lookup to join RouletteUserHistory
-            {
-              $lookup: {
-                from: "RouletteUserHistory", // Collection name of RouletteUserHistory
-                let: { userId: { $toString: "$_id" } }, // Convert _id to string
-                pipeline: [
-                  {
-                    $match: {
-                      $expr: {
-                        $eq: ["$userId", "$$userId"], // Match userId from RouletteUserHistory
-                      },
-                    },
+      const pipeline = [
+        // 1. Match users (Optional: Filter specific users)
+        {
+          $match: {}, // Add filter criteria here if needed, e.g., { isActive: true }
+        },
+        // 2. Lookup to join RouletteUserHistory
+        {
+          $lookup: {
+            from: "RouletteUserHistory", // Collection name of RouletteUserHistory
+            let: { userId: { $toString: "$_id" } }, // Convert _id to string
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $eq: ["$userId", "$$userId"], // Match userId from RouletteUserHistory
                   },
-                  {
-                    $group: {
-                      _id: null,
-                      totalPlay: { $sum: "$play" }, // Sum of play points
-                      totalWon: { $sum: "$won" },  // Sum of won points
-                      history: { $push: "$$ROOT" }, // Preserve all history records
-                    },
-                  },
-                  {
-                    $addFields: {
-                      endPoints: { $subtract: ["$totalPlay", "$totalWon"] }, // End points calculation
-                      margin: { $multiply: ["$totalPlay", 0.025] },           // Margin calculation
-                    },
-                  },
-                ],
-                as: "historyData", // Output field name for history data
+                },
               },
-            },
-            // 3. Unwind history data to access computed values
-            {
-              $unwind: {
-                path: "$historyData",
-                preserveNullAndEmptyArrays: true, // Optional: Keep users with no history
+              {
+                $group: {
+                  _id: null,
+                  totalPlay: { $sum: "$play" }, // Sum of play points
+                  totalWon: { $sum: "$won" }, // Sum of won points
+                  history: { $push: "$$ROOT" }, // Preserve all history records
+                },
               },
-            },
-            // 4. Project final output with all user fields and aggregated history data
-            {
-              $project: {
-                username: 1,
-                name: 1,
-                id: 1,
-                mobileNumber: 1,
-                "counters.totalMatch": 1,
-                profileUrl: 1,
-                email: 1,
-                uniqueId: 1,
-                isVIP: 1,
-                chips: 1,
-                referralCode: 1,
-                createdAt: 1,
-                lastLoginDate: 1,
-                status: 1,
-                // history: "$historyData.history", // Preserve all history records
-                totalPlayPoints: "$historyData.totalPlay", // Total play points
-                totalWonPoints: "$historyData.totalWon",   // Total won points
-                endPoints: "$historyData.endPoints",      // End points
-                margin: "$historyData.margin",            // Margin
+              {
+                $addFields: {
+                  endPoints: { $subtract: ["$totalPlay", "$totalWon"] }, // End points calculation
+                  margin: { $multiply: ["$totalPlay", 0.025] }, // Margin calculation
+                },
               },
-            },
-          ];
-          
-          // Run the pipeline
-           userList = await Users.aggregate(pipeline);
-          
+            ],
+            as: "historyData", // Output field name for history data
+          },
+        },
+        // 3. Unwind history data to access computed values
+        {
+          $unwind: {
+            path: "$historyData",
+            preserveNullAndEmptyArrays: true, // Optional: Keep users with no history
+          },
+        },
+        // 4. Project final output with all user fields and aggregated history data
+        {
+          $project: {
+            username: 1,
+            name: 1,
+            id: 1,
+            mobileNumber: 1,
+            "counters.totalMatch": 1,
+            profileUrl: 1,
+            email: 1,
+            uniqueId: 1,
+            isVIP: 1,
+            chips: 1,
+            referralCode: 1,
+            createdAt: 1,
+            lastLoginDate: 1,
+            status: 1,
+            // history: "$historyData.history", // Preserve all history records
+            totalPlayPoints: "$historyData.totalPlay", // Total play points
+            totalWonPoints: "$historyData.totalWon", // Total won points
+            endPoints: "$historyData.endPoints", // End points
+            margin: "$historyData.margin", // Margin
+          },
+        },
+      ];
+
+      // Run the pipeline
+      userList = await Users.aggregate(pipeline);
     } else if (req.query.type == "Agent") {
       let totalsubagent = await Shop.find(
         { agentId: MongoID(req.query.Id) },
@@ -164,6 +163,100 @@ router.get("/UserList", async (req, res) => {
     }
     logger.info("admin/dahboard.js post dahboard  error => ", userList);
 
+    res.json({ userList });
+  } catch (error) {
+    logger.error("admin/dahboard.js post bet-list error => ", error);
+    res.status(config.INTERNAL_SERVER_ERROR).json(error);
+  }
+});
+
+/**
+ * @api {get} /admin/lobbies
+ * @apiName  add-bet-list
+ * @apiGroup  Admin
+ * @apiHeader {String}  x-access-token Admin's unique access-key
+ * @apiSuccess (Success 200) {Array} badges Array of badges document
+ * @apiError (Error 4xx) {String} message Validation or error message.
+ */
+router.get("/agent/UserList", async (req, res) => {
+  try {
+    console.log("requet => ", req.query.Id);
+    console.log("requet => type ", req.query.type);
+
+    if (req.query.type == "Agent") {
+      const agentId = req.query.Id || null; // Replace with actual agentId or dynamically provide it
+
+      const pipeline = [
+        // 1. Match users (Optional: Filter specific users or agentId)
+        {
+          $match: agentId ? { agentId: MongoID(agentId) } : {}, // Filter by agentId if provided
+        },
+        // 2. Lookup to join RouletteUserHistory
+        {
+          $lookup: {
+            from: "RouletteUserHistory", // Collection name of RouletteUserHistory
+            let: { userId: { $toString: "$_id" } }, // Convert _id to string
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $eq: ["$userId", "$$userId"], // Match userId from RouletteUserHistory
+                  },
+                },
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalPlay: { $sum: "$play" }, // Sum of play points
+                  totalWon: { $sum: "$won" },  // Sum of won points
+                  history: { $push: "$$ROOT" }, // Preserve all history records
+                },
+              },
+              {
+                $addFields: {
+                  endPoints: { $subtract: ["$totalPlay", "$totalWon"] }, // End points calculation
+                  margin: { $multiply: ["$totalPlay", 0.025] },           // Margin calculation
+                },
+              },
+            ],
+            as: "historyData", // Output field name for history data
+          },
+        },
+        // 3. Unwind history data to access computed values
+        {
+          $unwind: {
+            path: "$historyData",
+            preserveNullAndEmptyArrays: true, // Optional: Keep users with no history
+          },
+        },
+        // 4. Project final output with all user fields and aggregated history data
+        {
+          $project: {
+            username: 1,
+            name: 1,
+            id: 1,
+            mobileNumber: 1,
+            "counters.totalMatch": 1,
+            profileUrl: 1,
+            email: 1,
+            uniqueId: 1,
+            isVIP: 1,
+            chips: 1,
+            referralCode: 1,
+            createdAt: 1,
+            lastLoginDate: 1,
+            status: 1,
+            totalPlayPoints: "$historyData.totalPlay", // Total play points
+            totalWonPoints: "$historyData.totalWon",   // Total won points
+            endPoints: "$historyData.endPoints",      // End points
+            margin: "$historyData.margin",            // Margin
+          },
+        },
+      ];
+
+      // Run the pipeline
+      userList = await Users.aggregate(pipeline);
+    }
     res.json({ userList });
   } catch (error) {
     logger.error("admin/dahboard.js post bet-list error => ", error);
