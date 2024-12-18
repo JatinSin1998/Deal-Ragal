@@ -505,7 +505,7 @@ module.exports.addagentWalletAdmin = async (id, added_chips, tType, t, game, adm
         // }
         
         return totalRemaningAmount;
-    } catch (e) {
+    } catch (e) {   
         logger.info("addagentWalletAdmin : 1 : Exception : 1", e)
         return 0
     }

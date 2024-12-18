@@ -8,7 +8,8 @@ const mainCtrl = require("../../controller/adminController");
 const logger = require("../../../logger");
 const { registerUser } = require("../../helper/signups/signupValidation");
 const walletActions = require("../../roulette/updateWallet");
-
+const GameUser = mongoose.model("users");
+const AgentUser = mongoose.model("agent");
 
 /**
  * @api {post} /admin/lobbies
@@ -314,9 +315,10 @@ router.put("/agentChangePassword", async (req, res) => {
         .json({ status: false, msg: "Missing required fields." });
     }
 
-    const agent = await Agent.findOne({ _id: new mongoose.Types.ObjectId(agentId) });
-    console.log(agent,"agentagent");
-    
+    const agent = await Agent.findOne({
+      _id: new mongoose.Types.ObjectId(agentId),
+    });
+    console.log(agent, "agentagent");
 
     if (!agent) {
       res.json({ status: false, msg: "No Agent !.." });
@@ -340,8 +342,133 @@ router.put("/agentChangePassword", async (req, res) => {
   } catch (error) {
     logger.error("admin/dahboard.js post bet-list error => ", error);
     //res.send("error");
-    console.log(error,"error");
-    
+    console.log(error, "error");
+
+    res.status(config.INTERNAL_SERVER_ERROR).json(error);
+  }
+});
+
+router.put("/addMoneyToUser", async (req, res) => {
+  try {
+    const agentInfo = await AgentUser.findOne(
+      { _id: new mongoose.Types.ObjectId(req.body.adminid) },
+      { name: 1, chips: 1 }
+    );
+
+    if (agentInfo != null && agentInfo.chips < Number(req.body.money)) {
+      res.json({
+        status: false,
+        msg: "not enough chips to adding user wallet",
+      });
+      return false;
+    }
+
+    const userInfo = await GameUser.findOne(
+      { _id: new mongoose.Types.ObjectId(req.body.userId) },
+      { name: 1, agentId: 1 }
+    );
+    console.log(userInfo.agentId, "userInfo");
+
+    // Compare ObjectIds in the same type (both should be ObjectIds)
+    if (userInfo.agentId.toString() !== req.body.adminid.toString()) {
+      res.json({
+        status: false,
+        msg: "User is not added by this agent",
+      });
+      return;
+    }
+
+    await walletActions.deductagentWallet(
+      req.body.adminid,
+      -Number(req.body.money),
+      2,
+      "Add Chips to User",
+      "roulette",
+      agentInfo.name,
+      req.body.adminid,
+      req.body.userId,
+      userInfo.name
+    );
+
+    await walletActions.addWalletAdmin(
+      req.body.userId,
+      Number(req.body.money),
+      2,
+      "Agent Addeed Chips",
+      "roulette",
+      req.body.adminname,
+      req.body.adminid
+    );
+    res.json({ status: "ok", msg: "Successfully Credited...!!" });
+  } catch (error) {
+    logger.error("admin/dahboard.js post bet-list error => ", error);
+    //res.send("error");
+    console.log(error, "error");
+
+    res.status(config.INTERNAL_SERVER_ERROR).json(error);
+  }
+});
+
+router.put("/deductMoneyToUser", async (req, res) => {
+  try {
+    const agentInfo = await AgentUser.findOne(
+      { _id: new mongoose.Types.ObjectId(req.body.adminid) },
+      { name: 1, chips: 1 }
+    );
+
+    const userInfo = await GameUser.findOne(
+      { _id: new mongoose.Types.ObjectId(req.body.userId) },
+      { name: 1, agentId: 1, chips: 1 }
+    );
+    console.log(userInfo.agentId, "userInfo");
+
+    // Compare ObjectIds in the same type (both should be ObjectIds)
+    if (userInfo.agentId.toString() !== req.body.adminid.toString()) {
+      res.json({
+        status: false,
+        msg: "User is not added by this agent",
+      });
+      return;
+    }
+     console.log(userInfo,"agentInfoagentInfo");
+     
+    if (userInfo != null && userInfo.chips < Number(req.body.money)) {
+      res.json({
+        status: false,
+        msg: "User does not have enough chips to deduct.",
+      });
+      return;
+    }
+
+    // Proceed with the logic if the condition is not met
+
+    await walletActions.deductWallet(
+      req.body.userId,
+      -Number(req.body.money),
+      2,
+      "agents duduct Chips",
+      "roulette",
+      req.body.adminname,
+      req.body.adminid
+    );
+
+    await walletActions.addagentWalletAdmin(
+      req.body.adminid,
+      Number(req.body.money),
+      2,
+      "Deduct amount Addeed Chips to agent",
+      "roulette",
+      req.body.adminname,
+      req.body.adminid,
+      userInfo.name
+    );
+
+    res.json({ status: "ok", msg: "Successfully Debited...!!" });
+  } catch (error) {
+    logger.error("admin/dahboard.js post bet-list error => ", error);
+    //res.send("error");
+    console.log(error, "error");
+
     res.status(config.INTERNAL_SERVER_ERROR).json(error);
   }
 });

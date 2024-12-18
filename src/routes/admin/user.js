@@ -182,7 +182,7 @@ router.get("/agent/UserList", async (req, res) => {
   try {
     console.log("requet => ", req.query.Id);
     console.log("requet => type ", req.query.type);
-
+    let userList = [];
     if (req.query.type == "Agent") {
       const agentId = req.query.Id || null; // Replace with actual agentId or dynamically provide it
 
@@ -208,14 +208,14 @@ router.get("/agent/UserList", async (req, res) => {
                 $group: {
                   _id: null,
                   totalPlay: { $sum: "$play" }, // Sum of play points
-                  totalWon: { $sum: "$won" },  // Sum of won points
+                  totalWon: { $sum: "$won" }, // Sum of won points
                   history: { $push: "$$ROOT" }, // Preserve all history records
                 },
               },
               {
                 $addFields: {
                   endPoints: { $subtract: ["$totalPlay", "$totalWon"] }, // End points calculation
-                  margin: { $multiply: ["$totalPlay", 0.025] },           // Margin calculation
+                  margin: { $multiply: ["$totalPlay", 0.025] }, // Margin calculation
                 },
               },
             ],
@@ -247,9 +247,9 @@ router.get("/agent/UserList", async (req, res) => {
             lastLoginDate: 1,
             status: 1,
             totalPlayPoints: "$historyData.totalPlay", // Total play points
-            totalWonPoints: "$historyData.totalWon",   // Total won points
-            endPoints: "$historyData.endPoints",      // End points
-            margin: "$historyData.margin",            // Margin
+            totalWonPoints: "$historyData.totalWon", // Total won points
+            endPoints: "$historyData.endPoints", // End points
+            margin: "$historyData.margin", // Margin
           },
         },
       ];
@@ -260,6 +260,8 @@ router.get("/agent/UserList", async (req, res) => {
     res.json({ userList });
   } catch (error) {
     logger.error("admin/dahboard.js post bet-list error => ", error);
+    console.log(error, "error");
+
     res.status(config.INTERNAL_SERVER_ERROR).json(error);
   }
 });
@@ -400,7 +402,6 @@ router.put("/addMoney", async (req, res) => {
   try {
     console.log("Add Money ", req.body);
     //const RecentUser = //await Users.deleteOne({_id: new mongoose.Types.ObjectId(req.params.id)})
-
     if (req.body.adminname != "Super Admin") {
       const agentInfo = await Shop.findOne(
         { _id: new mongoose.Types.ObjectId(req.body.adminid) },
@@ -465,7 +466,6 @@ router.put("/addMoney", async (req, res) => {
   } catch (error) {
     logger.error("admin/dahboard.js post bet-list error => ", error);
     //res.send("error");
-
     res.status(config.INTERNAL_SERVER_ERROR).json(error);
   }
 });
