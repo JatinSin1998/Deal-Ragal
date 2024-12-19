@@ -10,7 +10,7 @@ const { registerUser } = require("../../helper/signups/signupValidation");
 const walletActions = require("../../roulette/updateWallet");
 const GameUser = mongoose.model("users");
 const AgentUser = mongoose.model("agent");
-
+const RouletteUserHistory = mongoose.model("RouletteUserHistory");
 /**
  * @api {post} /admin/lobbies
  * @apiName  add-bet-list
@@ -230,7 +230,7 @@ router.delete("/Deleteagent/:id", async (req, res) => {
 });
 
 /**
- * @api {post} /admin/lobbies
+ * @api {post} /agent/agentAddMoney
  * @apiName  add-bet-list
  * @apiGroup  Admin
  * @apiHeader {String}  x-access-token Admin's unique access-key
@@ -267,7 +267,7 @@ router.put("/agentAddMoney", async (req, res) => {
  * @api {post} /admin/deductMoney
  * @apiName  add-bet-list
  * @apiGroup  Admin
- * @apiHeader {String}  x-access-token Admin's unique access-key
+ * @apiHeader {String}  x-access-token Agent's unique access-key
  * @apiSuccess (Success 200) {Array} badges Array of badges document
  * @apiError (Error 4xx) {String} message Validation or error message.
  */
@@ -300,8 +300,8 @@ router.put("/agentDeductMoney", async (req, res) => {
 /**
  * @api {post} /admin/agentChangePassword
  * @apiName  add-bet-list
- * @apiGroup  Admin
- * @apiHeader {String}  x-access-token Admin's unique access-key
+ * @apiGroup  Agent
+ * @apiHeader {String}  x-access-token Agent's unique access-key
  * @apiSuccess (Success 200) {Array} badges Array of badges document
  * @apiError (Error 4xx) {String} message Validation or error message.
  */
@@ -347,6 +347,15 @@ router.put("/agentChangePassword", async (req, res) => {
     res.status(config.INTERNAL_SERVER_ERROR).json(error);
   }
 });
+
+/**
+ * @api {post} /admin/addMoneyToUser
+ * @apiName  add-bet-list
+ * @apiGroup  Agent
+ * @apiHeader {String}  x-access-token Agent's unique access-key
+ * @apiSuccess (Success 200) {Array} badges Array of badges document
+ * @apiError (Error 4xx) {String} message Validation or error message.
+ */
 
 router.put("/addMoneyToUser", async (req, res) => {
   try {
@@ -430,8 +439,8 @@ router.put("/deductMoneyToUser", async (req, res) => {
       });
       return;
     }
-     console.log(userInfo,"agentInfoagentInfo");
-     
+    console.log(userInfo, "agentInfoagentInfo");
+
     if (userInfo != null && userInfo.chips < Number(req.body.money)) {
       res.json({
         status: false,
@@ -469,6 +478,39 @@ router.put("/deductMoneyToUser", async (req, res) => {
     //res.send("error");
     console.log(error, "error");
 
+    res.status(config.INTERNAL_SERVER_ERROR).json(error);
+  }
+});
+
+/**
+ * @api {get} /agent/RouletteGameHistory
+ * @apiGroup  Agent
+ * @apiHeader {String}  x-access-token Admin's unique access-key
+ * @apiSuccess (Success 200) {Array} badges Array of badges document
+ * @apiError (Error 4xx) {String} message Validation or error message.
+ */
+router.get("/RouletteGameHistory", async (req, res) => {
+  try {
+    console.log("in api call");
+
+    console.log("requet => ", req.query.agentId);
+    const agentAddUserData = await GameUser.find({
+      agentId: req.query.agentId,
+    }).select("_id");
+    // Extract the array of IDs
+    const userIdArray = agentAddUserData.map((user) => user._id);
+  
+    const tabInfo = await RouletteUserHistory.find(
+      { userId: { $in: userIdArray } }, // Match any userId in the array
+    ).sort({ createdAt: -1 });
+    // logger.info('admin/dahboard.js post dahboard  error => ', tabInfo[0].betObjectData.length);
+
+    // res.json({ gameHistoryData: tabInfo });
+    res.json({ gameHistoryData: tabInfo });
+  } catch (error) {
+    console.log(error,"errorerror");
+    
+    logger.error("admin/dahboard.js post bet-list error => ", error);
     res.status(config.INTERNAL_SERVER_ERROR).json(error);
   }
 });
