@@ -294,6 +294,54 @@ router.put('/shopDeductMoney', async (req, res) => {
     }
 });
 
+/**
+* @api {post} /shop/subagentChangePassword
+* @apiGroup  sub agent
+* @apiHeader {String}  x-access-token Admin's unique access-key
+* @apiSuccess (Success 200) {Array} badges Array of badges document
+* @apiError (Error 4xx) {String} message Validation or error message.
+*/
+
+router.put("/subagentChangePassword", async (req, res) => {
+    try { 
+      const { subAgentId, oldPassword, newPassword } = req.body;
+      if (!subAgentId || !oldPassword || !newPassword) {
+        return res
+          .status(400)
+          .json({ status: false, msg: "Missing required fields." });
+      }
+      const subAgent = await Shop.findOne({
+        _id: new mongoose.Types.ObjectId(subAgentId),
+      });
+      if (!subAgent) {
+        res.json({ status: false, msg: "No Agent !.." });
+      }
+  
+      // Check if the old password matches the stored password
+      if (subAgent.password !== oldPassword) {
+        return res
+          .status(401)
+          .json({ status: false, msg: "Old password is incorrect." });
+      }
+      // Update the password with the new password
+      await Shop.updateOne(
+        { _id: new mongoose.Types.ObjectId(subAgentId) },
+        { $set: { password: newPassword } }
+      );
+  
+      res
+        .status(200)
+        .json({ status: true, msg: "Password updated successfully." });
+    } catch (error) {
+      logger.error("admin/dahboard.js post bet-list error => ", error);
+      //res.send("error");
+      console.log(error, "error");
+  
+      res.status(config.INTERNAL_SERVER_ERROR).json(error);
+    }
+  });
+  
+
 async function createPhoneNumber() {
     const countryCode = "91";
 
