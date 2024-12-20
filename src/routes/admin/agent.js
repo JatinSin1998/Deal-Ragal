@@ -523,11 +523,6 @@ router.get("/RouletteGameHistory", async (req, res) => {
 router.get("/dashboradData", async (req, res) => {
   try {
     console.log("requet => ", req.query.agentId);
-    const userData = await GameUser.find({
-      agentId: req.query.agentId,
-    }).select("flags");
-    console.log(userData, "userData");
-
     const data = await GameUser.aggregate([
       { $match: { agentId: mongoose.Types.ObjectId(req.query.agentId) } },
       {
