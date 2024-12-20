@@ -534,10 +534,10 @@ router.get("/dashboradData", async (req, res) => {
         $group: {
           _id: null,
           activeUsers: {
-            $sum: { $cond: [{ $eq: ["$flags.isOnline", 1] }, 1, 0] },
+            $sum: { $cond: [{ $and: [{ $eq: ["$flags.isOnline", 1] }, { $eq: ["$status", true] }] }, 1, 0] },
           },
           inactiveUsers: {
-            $sum: { $cond: [{ $eq: ["$flags.isOnline", 0] }, 1, 0] },
+            $sum: { $cond: [{ $or: [{ $ne: ["$flags.isOnline", 1] }, { $ne: ["$status", true] }] }, 1, 0] },
           },
           suspendedUsers: {
             $sum: { $cond: [{ $eq: ["$status", false] }, 1, 0] },
