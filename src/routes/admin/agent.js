@@ -491,25 +491,109 @@ router.put("/deductMoneyToUser", async (req, res) => {
  */
 router.get("/RouletteGameHistory", async (req, res) => {
   try {
-    console.log("in api call");
-
     console.log("requet => ", req.query.agentId);
     const agentAddUserData = await GameUser.find({
       agentId: req.query.agentId,
     }).select("_id");
     // Extract the array of IDs
     const userIdArray = agentAddUserData.map((user) => user._id);
-  
+
     const tabInfo = await RouletteUserHistory.find(
-      { userId: { $in: userIdArray } }, // Match any userId in the array
+      { userId: { $in: userIdArray } } // Match any userId in the array
     ).sort({ createdAt: -1 });
     // logger.info('admin/dahboard.js post dahboard  error => ', tabInfo[0].betObjectData.length);
 
     // res.json({ gameHistoryData: tabInfo });
     res.json({ gameHistoryData: tabInfo });
   } catch (error) {
-    console.log(error,"errorerror");
-    
+    console.log(error, "errorerror");
+
+    logger.error("admin/dahboard.js post bet-list error => ", error);
+    res.status(config.INTERNAL_SERVER_ERROR).json(error);
+  }
+});
+
+/**
+ * @api {get} /agent/dashboradData
+ * @apiGroup  Agent
+ * @apiHeader {String}  x-access-token Admin's unique access-key
+ * @apiSuccess (Success 200) {Array} badges Array of badges document
+ * @apiError (Error 4xx) {String} message Validation or error message.
+ */
+router.get("/dashboradData", async (req, res) => {
+  try {
+    console.log("requet => ", req.query.agentId);
+    const userData = await GameUser.find({
+      agentId: req.query.agentId,
+    }).select("flags");
+    console.log(userData, "userData");
+
+    const data = await GameUser.aggregate([
+      { $match: { agentId: mongoose.Types.ObjectId(req.query.agentId) } },
+      {
+        $group: {
+          _id: null,
+          activeUsers: {
+            $sum: { $cond: [{ $eq: ["$flags.isOnline", 1] }, 1, 0] },
+          },
+          inactiveUsers: {
+            $sum: { $cond: [{ $eq: ["$flags.isOnline", 0] }, 1, 0] },
+          },
+          suspendedUsers: {
+            $sum: { $cond: [{ $eq: ["$status", false] }, 1, 0] },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0, // Remove the `_id` field from the final output
+          activeUsers: 1,
+          inactiveUsers: 1,
+          suspendedUsers: 1,
+        },
+      },
+    ]);
+
+    res.json({ data });
+  } catch (error) {
+    console.log(error, "errorerror");
+
+    logger.error("admin/dahboard.js post bet-list error => ", error);
+    res.status(config.INTERNAL_SERVER_ERROR).json(error);
+  }
+});
+
+/**
+ * @api {put} /agent/changeUserStatus
+ * @apiGroup  Agent
+ * @apiHeader {String}  x-access-token Admin's unique access-key
+ * @apiSuccess (Success 200) {Array} badges Array of badges document
+ * @apiError (Error 4xx) {String} message Validation or error message.
+ */
+router.put("/changeUserStatus", async (req, res) => {
+  try {
+    console.log("requet => ", req.query.agentId);
+    const user = await GameUser.findOne({
+      agentId: req.query.agentId,
+      _id: req.query.userId, // Assuming `userId` is passed as a query parameter
+    });
+    // Check if the user exists
+    if (!user) {
+      return res
+        .status(404)
+        .json({ error: "No user found for the provided agentId and userId." });
+    }
+
+    // Toggle the status
+    user.status = !user.status; // Flip true to false or false to true
+    await user.save(); // Save the updated user document
+
+    res
+      .status(200)
+      .json({ message: "Status updated successfully", updatedUser: user });
+  } catch (error) {
+    console.log(error, "errorerror");
+
     logger.error("admin/dahboard.js post bet-list error => ", error);
     res.status(config.INTERNAL_SERVER_ERROR).json(error);
   }
