@@ -594,6 +594,35 @@ router.put("/changeUserStatus", async (req, res) => {
   }
 });
 
+/**
+ * @api {put} /agent/agentBalance
+ * @apiGroup  Agent
+ * @apiHeader {String}  x-access-token Admin's unique access-key
+ * @apiSuccess (Success 200) {Array} badges Array of badges document
+ * @apiError (Error 4xx) {String} message Validation or error message.
+ */
+router.get("/agentBalance", async (req, res) => {
+  try {
+    const agent = await AgentUser.findOne({
+      _id: req.query.agentId, // Assuming `userId` is passed as a query parameter
+    }).select("chips");
+    // Check if the user exists
+    if (!agent) {
+      return res
+        .status(404)
+        .json({ error: "No agent found." });
+    }
+    res
+      .status(200)
+      .json({ agent });
+  } catch (error) {
+    console.log(error, "errorerror");
+
+    logger.error("admin/dahboard.js post bet-list error => ", error);
+    res.status(config.INTERNAL_SERVER_ERROR).json(error);
+  }
+});
+
 async function createPhoneNumber() {
   const countryCode = "91";
 
