@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 const MongoID = mongoose.Types.ObjectId;
 
 const Users = mongoose.model("users");
-const Agent = mongoose.model("agent");
 const UserWalletTracks = mongoose.model("userWalletTracks");
 const Shop = mongoose.model("shop");
 const express = require("express");
@@ -184,12 +183,29 @@ router.get("/agent/UserList", async (req, res) => {
     console.log("requet => type ", req.query.type);
     let userList = [];
     if (req.query.type == "Agent") {
-      const agentId = req.query.Id || null; // Replace with actual agentId or dynamically provide it
-
+      const datapipeline = [
+        {
+          $match: {
+            agentId: new mongoose.Types.ObjectId(req.query.Id), // Convert to ObjectId.
+          },
+        },
+        {
+          $project: {
+            _id: 0, // Include the `_id` field.
+            agentId: "$_id", // Rename `_id` to `subAgentId`.
+          },
+        },
+      ];
+      // all sub agent where agent is added sub agent
+      const result = await Shop.aggregate(datapipeline);
+      const subAgentsIds = result.map((doc) => doc.agentId);
+      const agentId = new mongoose.Types.ObjectId(req.query.Id);
       const pipeline = [
         // 1. Match users (Optional: Filter specific users or agentId)
         {
-          $match: agentId ? { agentId: MongoID(agentId) } : {}, // Filter by agentId if provided
+          $match: {
+            agentId: { $in: [...subAgentsIds, agentId] }, // Match agentId for both sub-agents and the main agent.
+          },
         },
         // 2. Lookup to join RouletteUserHistory
         {
@@ -256,8 +272,81 @@ router.get("/agent/UserList", async (req, res) => {
 
       // Run the pipeline
       userList = await Users.aggregate(pipeline);
+      return res.json({ userList });
     }
-    res.json({ userList });
+    const pipeline = [
+      // 1. Match users (Optional: Filter specific users or agentId)
+      {
+        $match: {
+          agentId: new mongoose.Types.ObjectId(req.query.Id), // Match agentId for both sub-agents and the main agent.
+        },
+      },
+      // 2. Lookup to join RouletteUserHistory
+      {
+        $lookup: {
+          from: "RouletteUserHistory", // Collection name of RouletteUserHistory
+          let: { userId: { $toString: "$_id" } }, // Convert _id to string
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: ["$userId", "$$userId"], // Match userId from RouletteUserHistory
+                },
+              },
+            },
+            {
+              $group: {
+                _id: null,
+                totalPlay: { $sum: "$play" }, // Sum of play points
+                totalWon: { $sum: "$won" }, // Sum of won points
+                history: { $push: "$$ROOT" }, // Preserve all history records
+              },
+            },
+            {
+              $addFields: {
+                endPoints: { $subtract: ["$totalPlay", "$totalWon"] }, // End points calculation
+                margin: { $multiply: ["$totalPlay", 0.025] }, // Margin calculation
+              },
+            },
+          ],
+          as: "historyData", // Output field name for history data
+        },
+      },
+      // 3. Unwind history data to access computed values
+      {
+        $unwind: {
+          path: "$historyData",
+          preserveNullAndEmptyArrays: true, // Optional: Keep users with no history
+        },
+      },
+      // 4. Project final output with all user fields and aggregated history data
+      {
+        $project: {
+          username: 1,
+          name: 1,
+          id: 1,
+          mobileNumber: 1,
+          "counters.totalMatch": 1,
+          profileUrl: 1,
+          email: 1,
+          uniqueId: 1,
+          isVIP: 1,
+          chips: 1,
+          referralCode: 1,
+          createdAt: 1,
+          lastLoginDate: 1,
+          status: 1,
+          totalPlayPoints: "$historyData.totalPlay", // Total play points
+          totalWonPoints: "$historyData.totalWon", // Total won points
+          endPoints: "$historyData.endPoints", // End points
+          margin: "$historyData.margin", // Margin
+        },
+      },
+    ];
+
+    // Run the pipeline
+    userList = await Users.aggregate(pipeline);
+    return res.json({ userList });
   } catch (error) {
     logger.error("admin/dahboard.js post bet-list error => ", error);
     console.log(error, "error");

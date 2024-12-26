@@ -12,6 +12,7 @@ const GameUser = mongoose.model("users");
 const AgentUser = mongoose.model("agent");
 const Shop = mongoose.model("shop");
 const RouletteUserHistory = mongoose.model("RouletteUserHistory");
+const PlayingTablesModel = mongoose.model("RouletteTables");
 /**
  * @api {post} /admin/lobbies
  * @apiName  add-bet-list
@@ -511,24 +512,25 @@ router.get("/RouletteGameHistory", async (req, res) => {
       // all sub agent where agent is added sub agent
       const result = await Shop.aggregate(pipeline);
       const subAgentsIds = result.map((doc) => doc.agentId);
-      // all the user sub agent had added
-      const subagentAddUserData = await GameUser.find(
-        { agentId: { $in: subAgentsIds } }, // Match users with shop IDs in the filtered array.
-        "_id" // Only select the `_id` field (user IDs).
-      );
-      // all the user  agent had added
-      const agentAddUserData = await GameUser.find({
-        agentId: req.query.agentId,
-      }).select("_id");
-      //  Combine both array
-      const allData = [...subagentAddUserData, ...agentAddUserData];
+      const agentId = new mongoose.Types.ObjectId(req.query.agentId);
+      const userPipeline = [
+        {
+          $match: {
+            agentId: { $in: [...subAgentsIds, agentId] }, // Match agentId for both sub-agents and the main agent.
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+          },
+        },
+      ];
+      const allData = await GameUser.aggregate(userPipeline);
       // Extract the array of IDs
       const userIdArray = allData.map((user) => user._id);
       const tabInfo = await RouletteUserHistory.find(
         { userId: { $in: userIdArray } } // Match any userId in the array
       ).sort({ createdAt: -1 });
-      console.log(tabInfo);
-
       return res.json({ gameHistoryData: tabInfo });
     }
     const agentAddUserData = await GameUser.find({
@@ -540,11 +542,9 @@ router.get("/RouletteGameHistory", async (req, res) => {
       { userId: { $in: userIdArray } } // Match any userId in the array
     ).sort({ createdAt: -1 });
     // logger.info('admin/dahboard.js post dahboard  error => ', tabInfo[0].betObjectData.length);
-    // res.json({ gameHistoryData: tabInfo });
     res.json({ gameHistoryData: tabInfo });
   } catch (error) {
     console.log(error, "errorerror");
-
     logger.error("admin/dahboard.js post bet-list error => ", error);
     res.status(config.INTERNAL_SERVER_ERROR).json(error);
   }
@@ -560,55 +560,207 @@ router.get("/RouletteGameHistory", async (req, res) => {
 router.get("/dashboradData", async (req, res) => {
   try {
     console.log("requet => ", req.query.agentId);
-    const data = await GameUser.aggregate([
-      { $match: { agentId: mongoose.Types.ObjectId(req.query.agentId) } },
+    if (req.query.agentId) {
+      const datapipeline = [
+        {
+          $match: {
+            agentId: new mongoose.Types.ObjectId(req.query.agentId), // Convert to ObjectId.
+          },
+        },
+        {
+          $project: {
+            _id: 0, // Include the `_id` field.
+            agentId: "$_id", // Rename `_id` to `subAgentId`.
+          },
+        },
+      ];
+      // all sub agent where agent is added sub agent
+      const result = await Shop.aggregate(datapipeline);
+      const subAgentsIds = result.map((doc) => doc.agentId);
+      const agentId = new mongoose.Types.ObjectId(req.query.agentId);
+      const pipeline = [
+        {
+          $match: {
+            agentId: { $in: [...subAgentsIds, agentId] }, // Match agentId for both sub-agents and the main agent.
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+          },
+        },
+      ];
+      const allData = await GameUser.aggregate(pipeline);
+      const suspendedPipeline = [
+        {
+          $match: {
+            agentId: { $in: [...subAgentsIds, agentId] }, // Match agentId for both sub-agents and the main agent.
+          },
+        },
+        {
+          $group: {
+            _id: null, // Combine all documents into one group.
+            suspendedUsers: {
+              $sum: { $cond: [{ $eq: ["$status", false] }, 1, 0] }, // Count users with `status: false` as suspended users.
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 0, // Exclude `_id` from the result.
+            suspendedUsers: 1, // Include only the `suspendedUsers` field in the output.
+          },
+        },
+      ];
+      // all the suspended user if any
+      const suspendedUsers = await GameUser.aggregate(suspendedPipeline);
+      // Extract the array of IDs
+      const userIdArray = allData.map((user) => user._id);
+      // Step 1: Use Aggregation to count active players
+      const playingTablesModelPipeline = [
+        {
+          $project: {
+            activePlayers: {
+              $filter: {
+                input: userIdArray, // The array of user IDs to check for active players.
+                as: "player",
+                cond: {
+                  $in: [
+                    "$$player", // Current player ID in `userIdArray`.
+                    {
+                      $map: {
+                        input: "$playerInfo", // Extracting player IDs from `playerInfo`.
+                        as: "p",
+                        in: "$$p.playerId",
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+            totalPlayers: { $size: "$playerInfo" }, // Total players in the document.
+          },
+        },
+        {
+          $addFields: {
+            activeCount: { $size: "$activePlayers" }, // Count active players.
+          },
+        },
+        {
+          $group: {
+            _id: null, // Group all documents together.
+            totalActiveCount: { $sum: "$activeCount" }, // Sum active players across all documents.
+          },
+        },
+        {
+          $project: {
+            _id: 0, // Exclude `_id` from the final result.
+            totalActiveCount: 1, // Include only the total active count.
+          },
+        },
+      ];
+
+      const results = await PlayingTablesModel.aggregate(
+        playingTablesModelPipeline
+      );
+
+      return res.json({
+        activeUsers: results[0].totalActiveCount,
+        inactiveUsers: userIdArray.length - results[0].totalActiveCount,
+        suspendedUsers: suspendedUsers[0].suspendedUsers,
+      });
+    }
+    const pipeline = [
+      {
+        $match: {
+          agentId: new mongoose.Types.ObjectId(req.query.subAgentId),
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+        },
+      },
+    ];
+    const allData = await GameUser.aggregate(pipeline);
+    const suspendedPipeline = [
+      {
+        $match: {
+          agentId: new mongoose.Types.ObjectId(req.query.subAgentId),
+        },
+      },
       {
         $group: {
-          _id: null,
-          activeUsers: {
-            $sum: {
-              $cond: [
-                {
-                  $and: [
-                    { $eq: ["$flags.isOnline", 1] },
-                    { $eq: ["$status", true] },
-                  ],
-                },
-                1,
-                0,
-              ],
-            },
-          },
-          inactiveUsers: {
-            $sum: {
-              $cond: [
-                {
-                  $or: [
-                    { $ne: ["$flags.isOnline", 1] },
-                    { $ne: ["$status", true] },
-                  ],
-                },
-                1,
-                0,
-              ],
-            },
-          },
+          _id: null, // Combine all documents into one group.
           suspendedUsers: {
-            $sum: { $cond: [{ $eq: ["$status", false] }, 1, 0] },
+            $sum: { $cond: [{ $eq: ["$status", false] }, 1, 0] }, // Count users with `status: false` as suspended users.
           },
         },
       },
       {
         $project: {
-          _id: 0, // Remove the `_id` field from the final output
-          activeUsers: 1,
-          inactiveUsers: 1,
-          suspendedUsers: 1,
+          _id: 0, // Exclude `_id` from the result.
+          suspendedUsers: 1, // Include only the `suspendedUsers` field in the output.
         },
       },
-    ]);
+    ];
+    // all the suspended user if any
+    const suspendedUsers = await GameUser.aggregate(suspendedPipeline);
+    // Extract the array of IDs
+    const userIdArray = allData.map((user) => user._id);
+    // Step 1: Use Aggregation to count active players
+    const playingTablesModelPipeline = [
+      {
+        $project: {
+          activePlayers: {
+            $filter: {
+              input: userIdArray, // The array of user IDs to check for active players.
+              as: "player",
+              cond: {
+                $in: [
+                  "$$player", // Current player ID in `userIdArray`.
+                  {
+                    $map: {
+                      input: "$playerInfo", // Extracting player IDs from `playerInfo`.
+                      as: "p",
+                      in: "$$p.playerId",
+                    },
+                  },
+                ],
+              },
+            },
+          },
+          totalPlayers: { $size: "$playerInfo" }, // Total players in the document.
+        },
+      },
+      {
+        $addFields: {
+          activeCount: { $size: "$activePlayers" }, // Count active players.
+        },
+      },
+      {
+        $group: {
+          _id: null, // Group all documents together.
+          totalActiveCount: { $sum: "$activeCount" }, // Sum active players across all documents.
+        },
+      },
+      {
+        $project: {
+          _id: 0, // Exclude `_id` from the final result.
+          totalActiveCount: 1, // Include only the total active count.
+        },
+      },
+    ];
 
-    res.json({ data });
+    const results = await PlayingTablesModel.aggregate(
+      playingTablesModelPipeline
+    );
+
+    return res.json({
+      activeUsers: results[0].totalActiveCount,
+      inactiveUsers: userIdArray.length - results[0].totalActiveCount,
+      suspendedUsers: suspendedUsers[0].suspendedUsers,
+    });
   } catch (error) {
     console.log(error, "errorerror");
 
