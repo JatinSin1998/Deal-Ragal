@@ -536,8 +536,12 @@ router.get("/RouletteGameHistory", async (req, res) => {
     const agentAddUserData = await GameUser.find({
       agentId: req.query.subAgentId,
     }).select("_id");
+    console.log(agentAddUserData,"agentAddUserDataagentAddUserData");
+    
     // Extract the array of IDs
     const userIdArray = agentAddUserData.map((user) => user._id);
+    console.log(userIdArray,"userIdArrayuserIdArray");
+    
     const tabInfo = await RouletteUserHistory.find(
       { userId: { $in: userIdArray } } // Match any userId in the array
     ).sort({ createdAt: -1 });
