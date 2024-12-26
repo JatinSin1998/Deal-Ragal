@@ -10,6 +10,7 @@ const { registerUser } = require("../../helper/signups/signupValidation");
 const walletActions = require("../../roulette/updateWallet");
 const GameUser = mongoose.model("users");
 const AgentUser = mongoose.model("agent");
+const Shop = mongoose.model("shop");
 const RouletteUserHistory = mongoose.model("RouletteUserHistory");
 /**
  * @api {post} /admin/lobbies
@@ -492,17 +493,53 @@ router.put("/deductMoneyToUser", async (req, res) => {
 router.get("/RouletteGameHistory", async (req, res) => {
   try {
     console.log("requet => ", req.query.agentId);
+
+    if (req.query.agentId) {
+      const pipeline = [
+        {
+          $match: {
+            agentId: new mongoose.Types.ObjectId(req.query.agentId), // Convert to ObjectId.
+          },
+        },
+        {
+          $project: {
+            _id: 0, // Include the `_id` field.
+            agentId: "$_id", // Rename `_id` to `subAgentId`.
+          },
+        },
+      ];
+      // all sub agent where agent is added sub agent
+      const result = await Shop.aggregate(pipeline);
+      const subAgentsIds = result.map((doc) => doc.agentId);
+      // all the user sub agent had added
+      const subagentAddUserData = await GameUser.find(
+        { agentId: { $in: subAgentsIds } }, // Match users with shop IDs in the filtered array.
+        "_id" // Only select the `_id` field (user IDs).
+      );
+      // all the user  agent had added
+      const agentAddUserData = await GameUser.find({
+        agentId: req.query.agentId,
+      }).select("_id");
+      //  Combine both array
+      const allData = [...subagentAddUserData, ...agentAddUserData];
+      // Extract the array of IDs
+      const userIdArray = allData.map((user) => user._id);
+      const tabInfo = await RouletteUserHistory.find(
+        { userId: { $in: userIdArray } } // Match any userId in the array
+      ).sort({ createdAt: -1 });
+      console.log(tabInfo);
+
+      return res.json({ gameHistoryData: tabInfo });
+    }
     const agentAddUserData = await GameUser.find({
-      agentId: req.query.agentId,
+      agentId: req.query.subAgentId,
     }).select("_id");
     // Extract the array of IDs
     const userIdArray = agentAddUserData.map((user) => user._id);
-
     const tabInfo = await RouletteUserHistory.find(
       { userId: { $in: userIdArray } } // Match any userId in the array
     ).sort({ createdAt: -1 });
     // logger.info('admin/dahboard.js post dahboard  error => ', tabInfo[0].betObjectData.length);
-
     // res.json({ gameHistoryData: tabInfo });
     res.json({ gameHistoryData: tabInfo });
   } catch (error) {
@@ -529,10 +566,32 @@ router.get("/dashboradData", async (req, res) => {
         $group: {
           _id: null,
           activeUsers: {
-            $sum: { $cond: [{ $and: [{ $eq: ["$flags.isOnline", 1] }, { $eq: ["$status", true] }] }, 1, 0] },
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$flags.isOnline", 1] },
+                    { $eq: ["$status", true] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
           },
           inactiveUsers: {
-            $sum: { $cond: [{ $or: [{ $ne: ["$flags.isOnline", 1] }, { $ne: ["$status", true] }] }, 1, 0] },
+            $sum: {
+              $cond: [
+                {
+                  $or: [
+                    { $ne: ["$flags.isOnline", 1] },
+                    { $ne: ["$status", true] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
           },
           suspendedUsers: {
             $sum: { $cond: [{ $eq: ["$status", false] }, 1, 0] },
@@ -608,13 +667,9 @@ router.get("/agentBalance", async (req, res) => {
     }).select("chips");
     // Check if the user exists
     if (!agent) {
-      return res
-        .status(404)
-        .json({ error: "No agent found." });
+      return res.status(404).json({ error: "No agent found." });
     }
-    res
-      .status(200)
-      .json({ agent });
+    res.status(200).json({ agent });
   } catch (error) {
     console.log(error, "errorerror");
 
