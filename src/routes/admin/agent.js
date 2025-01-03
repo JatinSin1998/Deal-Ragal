@@ -412,27 +412,11 @@ router.put("/addMoneyToUser", async (req, res) => {
 
 router.put("/deductMoneyToUser", async (req, res) => {
   try {
-    const agentInfo = await AgentUser.findOne(
-      { _id: new mongoose.Types.ObjectId(req.body.adminid) },
-      { name: 1, chips: 1 }
-    );
-
     const userInfo = await GameUser.findOne(
       { _id: new mongoose.Types.ObjectId(req.body.userId) },
       { name: 1, agentId: 1, chips: 1 }
     );
-    console.log(userInfo.agentId, "userInfo");
-
-    // Compare ObjectIds in the same type (both should be ObjectIds)
-    if (userInfo.agentId.toString() !== req.body.adminid.toString()) {
-      res.json({
-        status: false,
-        msg: "User is not added by this agent",
-      });
-      return;
-    }
-    console.log(userInfo, "agentInfoagentInfo");
-
+    
     if (userInfo != null && userInfo.chips < Number(req.body.money)) {
       res.json({
         status: false,
