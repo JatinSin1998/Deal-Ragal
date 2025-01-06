@@ -16,7 +16,7 @@ const {
   saveGameUser,
 } = require("../../helper/signups/appStart");
 const walletActions = require("../../roulette/updateWallet");
-
+const GameUser = mongoose.model("users");
 const RouletteTables = mongoose.model("RouletteTables");
 const leaveTableActions = require("../../roulette/leaveTable");
 const commandAcions = require("../../helper/socketFunctions");
@@ -776,6 +776,53 @@ router.put("/blockandunblock", async (req, res) => {
     }
 
     logger.info("admin/dahboard.js post dahboard  error => ");
+  } catch (error) {
+    logger.error("admin/dahboard.js post bet-list error => ", error);
+    //res.send("error");
+
+    res.status(config.INTERNAL_SERVER_ERROR).json(error);
+  }
+});
+
+/**
+ * @api {post} /admin/user/check-username
+ * @apiName  add-bet-list
+ * @apiGroup  Admin
+ * @apiHeader {String}  x-access-token Admin's unique access-key
+ * @apiSuccess (Success 200) {Array} badges Array of badges document
+ * @apiError (Error 4xx) {String} message Validation or error message.
+ */
+router.post("/check-username", async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    // Validate input
+    if (!name) {
+      return res
+        .status(400)
+        .json({ success: false, message: "name is required." });
+    }
+
+    // Check if the username exists
+    const user = await GameUser.findOne({ name });
+
+    if (user) {
+      return res
+        .status(200)
+        .json({
+          success: true,
+          exists: true,
+          message: "name already exists.",
+        });
+    } else {
+      return res
+        .status(200)
+        .json({
+          success: true,
+          exists: false,
+          message: "name is available.",
+        });
+    }
   } catch (error) {
     logger.error("admin/dahboard.js post bet-list error => ", error);
     //res.send("error");
