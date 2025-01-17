@@ -23,18 +23,30 @@ const RouletteUserHistory = mongoose.model('RouletteUserHistory');
 */
 router.get('/RouletteGameHistory', async (req, res) => {
     try {
-        console.info('requet => ', req.query);
+        console.log("API call initiated...");
 
-        const tabInfo = await RouletteUserHistory.find({}, {}).sort({createdAt:-1});
+        const { page = 1, limit = 10, filter = '' } = req.query;
 
-        logger.info('admin/dahboard.js post dahboard  error => ', tabInfo[0].betObjectData.length);
+        const query = filter ? { someField: new RegExp(filter, 'i') } : {}; // Example filter
+        const tabInfo = await RouletteUserHistory.find(query)
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit));
 
-        res.json({ gameHistoryData: tabInfo });
+        const totalDocuments = await RouletteUserHistory.countDocuments(query);
+
+        res.json({ 
+            gameHistoryData: tabInfo, 
+            totalDocuments, 
+            totalPages: Math.ceil(totalDocuments / limit), 
+            currentPage: parseInt(page) 
+        });
     } catch (error) {
         logger.error('admin/dahboard.js post bet-list error => ', error);
-        res.status(config.INTERNAL_SERVER_ERROR).json(error);
+        res.status(500).json({ error: 'Internal Server Error' });
     }
 });
+
 
 /**
 * @api {get} /admin/BaraKaDumGameHistory
