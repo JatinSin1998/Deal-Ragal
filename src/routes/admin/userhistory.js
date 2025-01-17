@@ -23,8 +23,6 @@ const RouletteUserHistory = mongoose.model('RouletteUserHistory');
 */
 router.get('/RouletteGameHistory', async (req, res) => {
     try {
-        console.log("API call initiated...");
-
         const { page = 1, limit = 10, filter = '' } = req.query;
 
         const query = filter ? { someField: new RegExp(filter, 'i') } : {}; // Example filter
