@@ -46,6 +46,7 @@ const CONST = {
   DASHBOARD: 'DASHBOARD',
   WALLET_UPDATE: 'WU',
   BANNER: 'BANNER',
+  GETPLAYERDATA: 'GPD',
 
   // Socket events names
 

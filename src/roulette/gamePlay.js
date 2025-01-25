@@ -1048,3 +1048,25 @@ module.exports.CreateDate = (date) => {
 
     return dt + '-' + month + '-' + year;
 }
+
+
+module.exports.getPlayerData = async (requestData, client) => {
+    try {
+        logger.info("player get  requestData : ", requestData);
+        if (typeof client.tbid == "undefined" || typeof client.uid == "undefined" || typeof client.seatIndex == "undefined") {
+            commandAcions.sendDirectEvent(client.sck, CONST.GETPLAYERDATA, requestData, false, "User session not set, please restart game!");
+            return false;
+        }
+        
+        let gwh = {
+            _id: MongoID(client.uid)
+        }
+        let UserInfo = await GameUser.findOne(gwh, {}).lean();
+        logger.info("Get player Data UserInfo : ", gwh, JSON.stringify(UserInfo));
+        
+        commandAcions.sendDirectEvent(client.sck, CONST.GETPLAYERDATA, UserInfo, false, "Player Data Recevied");
+        return true;
+    } catch (e) {
+        logger.info("Exception action : ", e);
+    }
+}

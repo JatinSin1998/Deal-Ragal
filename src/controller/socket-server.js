@@ -289,6 +289,11 @@ myIo.init = function (server) {
                         break;
                     }
 
+                    case CONST.GETPLAYERDATA: {
+                        await gamePlayActionsRoulette.getPlayerData(payload.data, socket);
+                        break;
+                    }
+
                     case CONST.REMOVEBETROULETTE: {
                         await gamePlayActionsRoulette.REMOVEBETROULETTE(payload.data, socket);
                         break;
