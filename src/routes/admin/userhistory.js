@@ -33,7 +33,7 @@ router.get('/RouletteGameHistory', async (req, res) => {
 
         // Construct the query object
         const query = {
-            afterPlayPoint: { $ne: 0 }, // Ensure afterPlayPoint is not zero
+            afterplaypoint: { $ne: 0 }, // Ensure afterPlayPoint is not zero
         };
 
         // Add username filter if provided

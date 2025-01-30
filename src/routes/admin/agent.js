@@ -416,7 +416,7 @@ router.put("/deductMoneyToUser", async (req, res) => {
       { _id: new mongoose.Types.ObjectId(req.body.userId) },
       { name: 1, agentId: 1, chips: 1 }
     );
-    
+
     if (userInfo != null && userInfo.chips < Number(req.body.money)) {
       res.json({
         status: false,
@@ -467,7 +467,33 @@ router.put("/deductMoneyToUser", async (req, res) => {
  */
 router.get("/RouletteGameHistory", async (req, res) => {
   try {
-    console.log("requet => ", req.query.agentId);
+    const {
+      subAgentId,
+      username = "",
+      startDate = "",
+      endDate = "",
+    } = req.query;
+    const page = Number(req.query.page) || 1; // Ensure it's a number
+    const limit = Number(req.query.limit) || 10; // Ensure it's a number
+    const skip = (page - 1) * limit;
+
+    // Construct the query object
+    const query = {
+      afterplaypoint: { $ne: 0 }, // Ensure afterPlayPoint is not zero
+    };
+
+    // Add username filter if provided
+    if (username) {
+      query.username = new RegExp(`^${username}`, "i"); // Matches usernames starting with the provided string
+    }
+
+    // Add date range filter if both startDate and endDate are provided
+    if (startDate && endDate) {
+      query.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
 
     if (req.query.agentId) {
       const pipeline = [
@@ -493,7 +519,6 @@ router.get("/RouletteGameHistory", async (req, res) => {
             agentId: { $in: [...subAgentsIds, agentId] }, // Match agentId for both sub-agents and the main agent.
           },
         },
-        // 2. Lookup to join RouletteUserHistory
         {
           $lookup: {
             from: "RouletteUserHistory", // Collection name of RouletteUserHistory
@@ -504,79 +529,57 @@ router.get("/RouletteGameHistory", async (req, res) => {
                   $expr: {
                     $eq: ["$userId", "$$userId"], // Match userId from RouletteUserHistory
                   },
-                },
-              },
-              {
-                $group: {
-                  _id: null,
-                  totalPlay: { $sum: "$play" }, // Sum of play points
-                  totalWon: { $sum: "$won" }, // Sum of won points
-                  history: { $push: "$$ROOT" }, // Preserve all history records
-                },
-              },
-              {
-                $addFields: {
-                  endPoints: { $subtract: ["$totalPlay", "$totalWon"] }, // End points calculation
-                  margin: { $multiply: ["$totalPlay", 0.025] }, // Margin calculation
-                  filteredHistory: {
-                    $filter: {
-                      input: "$history", // Input is the `history` array
-                      as: "item", // Variable for each item in the array
-                      cond: { $ne: ["$$item.play", 0] }, // Condition to exclude items where play is 0
-                    },
-                  },
+                  ...query, // Apply filters dynamically
                 },
               },
             ],
             as: "historyData", // Output field name for history data
           },
         },
-        // 3. Unwind history data to access computed values
         {
           $unwind: {
             path: "$historyData",
-            preserveNullAndEmptyArrays: true, // Optional: Keep users with no history
           },
         },
-        // 4. Replace history with filteredHistory
         {
           $addFields: {
             "historyData.history": "$historyData.filteredHistory",
           },
         },
-        // 5. Optionally remove filteredHistory if not needed
         {
           $unset: "historyData.filteredHistory",
         },
-        // 6. Select only the required fields
+        {
+          $replaceRoot: { newRoot: "$historyData" }, // Flatten the structure to return only historyData
+        },
+        {
+          $facet: {
+            metadata: [{ $count: "total" }], // Count total history records
+            data: [{ $skip: skip }, { $limit: limit }], // Apply pagination
+          },
+        },
         {
           $project: {
-            totalPlayPoints: "$historyData.totalPlay", // Total play points
-            totalWonPoints: "$historyData.totalWon", // Total won points
-            endPoints: "$historyData.endPoints", // End points
-            margin: "$historyData.margin", // Margin
-            history: "$historyData.history", // History
+            total: { $arrayElemAt: ["$metadata.total", 0] }, // Extract total count
+            data: 1,
           },
         },
       ];
 
       const allData = await GameUser.aggregate(userPipeline);
-
-      // Extract the array of IDs
-      // const userIdArray = allData.map((user) => user._id);
-      // const tabInfo = await RouletteUserHistory.find(
-      //   { userId: { $in: userIdArray } } // Match any userId in the array
-      // ).sort({ createdAt: -1 });
-      // console.log(userIdArray,"userIdArrayuserIdArrayuserIdArray");
-      return res.json({ gameHistoryData: allData });
+      res.json({
+        historyData: allData[0].data || [],
+        totalRecords: allData[0].total || 0,
+        currentPage: page,
+        totalPages: Math.ceil((allData[0].total || 0) / limit),
+      });
     }
     const userPipeline = [
       {
         $match: {
-          agentId: new mongoose.Types.ObjectId(req.query.subAgentId), // Match agentId for both sub-agents and the main agent.
+          agentId: new mongoose.Types.ObjectId(subAgentId), // Match agentId for both sub-agents and the main agent.
         },
       },
-      // 2. Lookup to join RouletteUserHistory
       {
         $lookup: {
           from: "RouletteUserHistory", // Collection name of RouletteUserHistory
@@ -587,6 +590,271 @@ router.get("/RouletteGameHistory", async (req, res) => {
                 $expr: {
                   $eq: ["$userId", "$$userId"], // Match userId from RouletteUserHistory
                 },
+                ...query, // Apply filters dynamically
+              },
+            },
+          ],
+          as: "historyData", // Output field name for history data
+        },
+      },
+      {
+        $unwind: {
+          path: "$historyData",
+        },
+      },
+      {
+        $addFields: {
+          "historyData.history": "$historyData.filteredHistory",
+        },
+      },
+      {
+        $unset: "historyData.filteredHistory",
+      },
+      {
+        $replaceRoot: { newRoot: "$historyData" }, // Flatten the structure to return only historyData
+      },
+      {
+        $facet: {
+          metadata: [{ $count: "total" }], // Count total history records
+          data: [{ $skip: skip }, { $limit: limit }], // Apply pagination
+        },
+      },
+      {
+        $project: {
+          total: { $arrayElemAt: ["$metadata.total", 0] }, // Extract total count
+          data: 1,
+        },
+      },
+    ];
+
+    const result = await GameUser.aggregate(userPipeline);
+
+    res.json({
+      historyData: result[0].data || [],
+      totalRecords: result[0].total || 0,
+      currentPage: page,
+      totalPages: Math.ceil((result[0].total || 0) / limit),
+    });
+  } catch (error) {
+    console.log(error, "errorerror");
+    logger.error("admin/dahboard.js post bet-list error => ", error);
+    res.status(config.INTERNAL_SERVER_ERROR).json(error);
+  }
+});
+
+/**
+ * @api {get} /agent/RouletteGameHistory
+ * @apiGroup  Agent
+ * @apiHeader {String}  x-access-token Admin's unique access-key
+ * @apiSuccess (Success 200) {Array} badges Array of badges document
+ * @apiError (Error 4xx) {String} message Validation or error message.
+ */
+router.get("/turnover", async (req, res) => {
+  try {
+    const subAgentId = req.query.subAgentId; // Extract subAgentId
+    const startDate = req.query.startDate
+      ? new Date(req.query.startDate)
+      : null;
+    const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
+
+    const query = {
+      afterplaypoint: { $ne: 0 }, // Ensure afterPlayPoint is not zero
+    };
+    if (startDate && endDate) {
+      query.createdAt = { $gte: startDate, $lte: endDate }; // Date range filter
+    }
+
+    if (req.query.agentId) {
+      const pipeline = [
+        {
+          $match: {
+            agentId: new mongoose.Types.ObjectId(req.query.agentId),
+          }, // Match sub-agents
+        },
+        {
+          $lookup: {
+            from: "users", // Collection name
+            localField: "_id",
+            foreignField: "agentId",
+            as: "subAgentUsers", // Attach users created by sub-agent
+          },
+        },
+        {
+          $unwind: {
+            path: "$subAgentUsers",
+            preserveNullAndEmptyArrays: true, // Keep sub-agents even if they have no users
+          },
+        },
+        {
+          $lookup: {
+            from: "RouletteUserHistory", // Collection name of RouletteUserHistory
+            let: { userId: { $toString: "$subAgentUsers._id" } }, // Convert `_id` to string
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ["$userId", "$$userId"] }, // Match userId from history
+                  ...query, // Apply date filter (query should be a valid object)
+                },
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalPlay: { $sum: "$play" }, // Sum of play points
+                  totalWon: { $sum: "$won" }, // Sum of won points
+                },
+              },
+              {
+                $addFields: {
+                  endPoints: { $subtract: ["$totalPlay", "$totalWon"] }, // End points calculation
+                  margin: { $multiply: ["$totalPlay", 0.025] }, // Margin calculation
+                },
+              },
+            ],
+            as: "historyData", // Output field name for history data
+          },
+        },
+        {
+          $unwind: {
+            path: "$historyData",
+            preserveNullAndEmptyArrays: true, // Keep users even if they have no history
+          },
+        },
+        {
+          $group: {
+            _id: "$_id",
+            subAgentName: { $first: "$name" }, // Assuming `name` stores the sub-agent name
+            totalPlayPoints: { $sum: "$historyData.totalPlay" }, // Sum of totalPlayPoints for all users
+            totalWonPoints: { $sum: "$historyData.totalWon" }, // Sum of totalWonPoints for all users
+            totalEndPoints: { $sum: "$historyData.endPoints" }, // Sum of endPoints for all users
+            totalMargin: { $sum: "$historyData.margin" }, // Sum of margin for all users
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            subAgentId: "$_id",
+            subAgentName: 1,
+            totalPlayPoints: 1,
+            totalWonPoints: 1,
+            totalEndPoints: 1,
+            totalMargin: 1,
+          },
+        },
+        // Additional summing for the entire result set (total across all sub-agents)
+        {
+          $group: {
+            _id: null, // Combine all records into a single one
+            totalPlayPoints: { $sum: "$totalPlayPoints" },
+            totalWonPoints: { $sum: "$totalWonPoints" },
+            totalEndPoints: { $sum: "$totalEndPoints" },
+            totalMargin: { $sum: "$totalMargin" },
+            subAgentData: { $push: "$$ROOT" }, // Push the sub-agent level data into an array
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            totalPlayPoints: 1,
+            totalWonPoints: 1,
+            totalEndPoints: 1,
+            totalMargin: 1,
+            subAgentData: 1, // Include the sub-agent data
+          },
+        },
+      ];
+      
+      const result = await Shop.aggregate(pipeline);
+      
+
+      // console.log(result,"resultresultresultresult");
+
+      // const subAgentsIds = result.map((doc) => doc.agentId);
+      // const agentId = new mongoose.Types.ObjectId(req.query.agentId);
+      // console.log(subAgentsIds,"subAgentsIdssubAgentsIds");
+
+      // const userPipeline = [
+      //   {
+      //     $match: {
+      //       agentId: { $in: [...subAgentsIds, agentId] }, // Match agentId for both sub-agents and the main agent.
+      //     },
+      //   }, // ✅ Removed the extra comma here
+      //   {
+      //     $lookup: {
+      //       from: "RouletteUserHistory", // Collection name of RouletteUserHistory
+      //       let: { userId: { $toString: "$_id" } }, // Convert `_id` to string
+      //       pipeline: [
+      //         {
+      //           $match: {
+      //             $expr: {
+      //               $eq: ["$userId", "$$userId"], // Match userId from history
+      //             },
+      //             ...query, // Apply date filter
+      //           },
+      //         },
+      //         {
+      //           $group: {
+      //             _id: null,
+      //             totalPlay: { $sum: "$play" }, // Sum of play points
+      //             totalWon: { $sum: "$won" }, // Sum of won points
+      //             lastPlayedDate: { $max: "$createdAt" }, // Get the latest played date
+      //             history: { $push: "$$ROOT" }, // Preserve all history records
+      //           },
+      //         },
+      //         {
+      //           $addFields: {
+      //             endPoints: { $subtract: ["$totalPlay", "$totalWon"] }, // End points calculation
+      //             margin: { $multiply: ["$totalPlay", 0.025] }, // Margin calculation
+      //             filteredHistory: {
+      //               $filter: {
+      //                 input: "$history", // Input is the `history` array
+      //                 as: "item", // Variable for each item in the array
+      //                 cond: { $ne: ["$$item.play", 0] }, // Exclude records where play is 0
+      //               },
+      //             },
+      //           },
+      //         },
+      //       ],
+      //       as: "historyData", // Output field name for history data
+      //     },
+      //   },
+      //   {
+      //     $unwind: {
+      //       path: "$historyData",
+      //       preserveNullAndEmptyArrays: true, // Keep users with no history
+      //     },
+      //   },
+      //   {
+      //     $project: {
+      //       name: 1, // Include username
+      //       totalPlayPoints: "$historyData.totalPlay", // Total play points
+      //       totalWonPoints: "$historyData.totalWon", // Total won points
+      //       endPoints: "$historyData.endPoints", // End points
+      //       margin: "$historyData.margin", // Margin
+      //       lastPlayedDate: "$historyData.lastPlayedDate", // Last played date
+      //     },
+      //   },
+      // ];
+      // const allData = await GameUser.aggregate(userPipeline);
+      res.json({ turnOverData: result });
+    }
+    const userPipeline = [
+      {
+        $match: {
+          agentId: new mongoose.Types.ObjectId(subAgentId), // Ensure subAgentId is an ObjectId
+          ...(req.query.username ? { name: req.query.username } : {}), // Filter by username if provided
+        },
+      },
+      {
+        $lookup: {
+          from: "RouletteUserHistory", // Collection name of RouletteUserHistory
+          let: { userId: { $toString: "$_id" } }, // Convert `_id` to string
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: ["$userId", "$$userId"], // Match userId from history
+                },
+                ...query, // Apply date filter
               },
             },
             {
@@ -594,6 +862,7 @@ router.get("/RouletteGameHistory", async (req, res) => {
                 _id: null,
                 totalPlay: { $sum: "$play" }, // Sum of play points
                 totalWon: { $sum: "$won" }, // Sum of won points
+                lastPlayedDate: { $max: "$createdAt" }, // Get the latest played date
                 history: { $push: "$$ROOT" }, // Preserve all history records
               },
             },
@@ -605,7 +874,7 @@ router.get("/RouletteGameHistory", async (req, res) => {
                   $filter: {
                     input: "$history", // Input is the `history` array
                     as: "item", // Variable for each item in the array
-                    cond: { $ne: ["$$item.play", 0] }, // Condition to exclude items where play is 0
+                    cond: { $ne: ["$$item.play", 0] }, // Exclude records where play is 0
                   },
                 },
               },
@@ -614,46 +883,25 @@ router.get("/RouletteGameHistory", async (req, res) => {
           as: "historyData", // Output field name for history data
         },
       },
-      // 3. Unwind history data to access computed values
       {
         $unwind: {
           path: "$historyData",
-          preserveNullAndEmptyArrays: true, // Optional: Keep users with no history
+          preserveNullAndEmptyArrays: true, // Keep users with no history
         },
       },
-      // 4. Replace history with filteredHistory
-      {
-        $addFields: {
-          "historyData.history": "$historyData.filteredHistory",
-        },
-      },
-      // 5. Optionally remove filteredHistory if not needed
-      {
-        $unset: "historyData.filteredHistory",
-      },
-      // 6. Select only the required fields
       {
         $project: {
+          name: 1, // Include username
           totalPlayPoints: "$historyData.totalPlay", // Total play points
           totalWonPoints: "$historyData.totalWon", // Total won points
           endPoints: "$historyData.endPoints", // End points
           margin: "$historyData.margin", // Margin
-          history: "$historyData.history", // History
+          lastPlayedDate: "$historyData.lastPlayedDate", // Last played date
         },
       },
     ];
-
     const allData = await GameUser.aggregate(userPipeline);
-    // const agentAddUserData = await GameUser.find({
-    //   agentId: req.query.subAgentId,
-    // }).select("_id");
-    // Extract the array of IDs
-    // const userIdArray = agentAddUserData.map((user) => user._id);
-    // const tabInfo = await RouletteUserHistory.find(
-    //   { userId: { $in: userIdArray } } // Match any userId in the array
-    // ).sort({ createdAt: -1 });
-    // logger.info('admin/dahboard.js post dahboard  error => ', tabInfo[0].betObjectData.length);
-    res.json({ gameHistoryData: allData });
+    res.json({ turnOverData: allData });
   } catch (error) {
     console.log(error, "errorerror");
     logger.error("admin/dahboard.js post bet-list error => ", error);
@@ -1030,21 +1278,17 @@ router.post("/check-username", async (req, res) => {
     const user = await AgentUser.findOne({ name });
 
     if (user) {
-      return res
-        .status(200)
-        .json({
-          success: true,
-          exists: true,
-          message: "name already exists.",
-        });
+      return res.status(200).json({
+        success: true,
+        exists: true,
+        message: "name already exists.",
+      });
     } else {
-      return res
-        .status(200)
-        .json({
-          success: true,
-          exists: false,
-          message: "name is available.",
-        });
+      return res.status(200).json({
+        success: true,
+        exists: false,
+        message: "name is available.",
+      });
     }
   } catch (error) {
     logger.error("admin/dahboard.js post bet-list error => ", error);
