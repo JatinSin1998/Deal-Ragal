@@ -665,6 +665,8 @@ router.get("/turnover", async (req, res) => {
       : null;
     const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
 
+    const query = {};
+
     if (startDate && endDate) {
       query.createdAt = { $gte: startDate, $lte: endDate }; // Date range filter
     }
