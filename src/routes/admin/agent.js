@@ -479,7 +479,7 @@ router.get("/RouletteGameHistory", async (req, res) => {
 
     // Construct the query object
     const query = {
-      afterplaypoint: { $ne: 0 }, // Ensure afterPlayPoint is not zero
+      play: { $ne: 0 }, // Ensure afterPlayPoint is not zero
     };
 
     // Add username filter if provided
@@ -531,6 +531,10 @@ router.get("/RouletteGameHistory", async (req, res) => {
                   },
                   ...query, // Apply filters dynamically
                 },
+              },
+              // Sort by date (assuming there is a 'date' field in your RouletteUserHistory documents)
+              {
+                $sort: { createdAt: -1 }, // Sort in descending order to get the latest first
               },
             ],
             as: "historyData", // Output field name for history data
@@ -593,6 +597,10 @@ router.get("/RouletteGameHistory", async (req, res) => {
                 ...query, // Apply filters dynamically
               },
             },
+            // Sort by date (assuming there is a 'date' field in your RouletteUserHistory documents)
+            {
+              $sort: { createdAt: -1 }, // Sort in descending order to get the latest first
+            },
           ],
           as: "historyData", // Output field name for history data
         },
@@ -643,7 +651,7 @@ router.get("/RouletteGameHistory", async (req, res) => {
 });
 
 /**
- * @api {get} /agent/RouletteGameHistory
+ * @api {get} /agent/turnover
  * @apiGroup  Agent
  * @apiHeader {String}  x-access-token Admin's unique access-key
  * @apiSuccess (Success 200) {Array} badges Array of badges document
@@ -657,9 +665,6 @@ router.get("/turnover", async (req, res) => {
       : null;
     const endDate = req.query.endDate ? new Date(req.query.endDate) : null;
 
-    const query = {
-      afterplaypoint: { $ne: 0 }, // Ensure afterPlayPoint is not zero
-    };
     if (startDate && endDate) {
       query.createdAt = { $gte: startDate, $lte: endDate }; // Date range filter
     }
@@ -762,9 +767,8 @@ router.get("/turnover", async (req, res) => {
           },
         },
       ];
-      
+
       const result = await Shop.aggregate(pipeline);
-      
 
       // console.log(result,"resultresultresultresult");
 
