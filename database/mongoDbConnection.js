@@ -36,16 +36,16 @@ const mongoDB = config.DATABASE;
 const connectDB = async () => {
   try {
     await mongoose.connect(mongoDB, {
-      dbName: 'myDatabase',
+      dbName: 'dealregal',
       useNewUrlParser: true,
       useUnifiedTopology: true,
       useCreateIndex: true,
       useFindAndModify: false,
     });
 
-    // console.log('✅ Mongoose connection open');
+    console.log('✅ Mongoose connection open');
   } catch (err) {
-    // console.error('❌ Mongoose connection error:', err.message);
+    console.error('❌ Mongoose connection error:', err.message);
     process.exit(1);
   }
 };
